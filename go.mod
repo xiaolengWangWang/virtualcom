@@ -1,4 +1,4 @@
-module virtualcom
+module github.com/xiaolengWangWang/virtualcom
 
 go 1.26.0
 

@@ -9,7 +9,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
-	"virtualcom/internal/vcom"
+	"github.com/xiaolengWangWang/virtualcom/internal/vcom"
 )
 
 // exeFileVersion 读取 PE 文件里的 VERSIONINFO 资源(即"属性 → 详细信息"显示的版本)。

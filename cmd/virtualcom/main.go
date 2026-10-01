@@ -18,7 +18,7 @@ import (
 	"syscall"
 	"time"
 
-	"virtualcom/internal/vcom"
+	"github.com/xiaolengWangWang/virtualcom/internal/vcom"
 )
 
 func main() {
