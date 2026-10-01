@@ -17,16 +17,20 @@ import (
 )
 
 type Page struct {
-	window            *walk.MainWindow
-	manager           *virtualcom.Manager
-	model             *pairModel
-	portA, portB      *walk.LineEdit
-	table             *walk.TableView
-	toggle, remove    *walk.PushButton
-	summary, feedback *walk.Label
-	changed           func()
-	closed            atomic.Bool
-	done              chan struct{}
+	iconDPI                      int
+	brand                        *walk.ImageView
+	create, refresh, diagnostics *walk.PushButton
+	icons                        map[string]*walk.Icon
+	window                       *walk.MainWindow
+	manager                      *virtualcom.Manager
+	model                        *pairModel
+	portA, portB                 *walk.LineEdit
+	table                        *walk.TableView
+	toggle, remove               *walk.PushButton
+	summary, feedback            *walk.Label
+	changed                      func()
+	closed                       atomic.Bool
+	done                         chan struct{}
 }
 
 // NewWindow creates a management window. The caller owns manager: closing this
@@ -35,7 +39,15 @@ func NewWindow(owner walk.Form, manager *virtualcom.Manager, changed func()) (*w
 	if manager == nil {
 		return nil, nil, fmt.Errorf("virtualcom: nil manager")
 	}
-	p := &Page{manager: manager, model: &pairModel{}, changed: changed, done: make(chan struct{})}
+	p := &Page{manager: manager, model: &pairModel{}, changed: changed, done: make(chan struct{}), icons: make(map[string]*walk.Icon)}
+	created := false
+	defer func() {
+		if !created {
+			for _, icon := range p.icons {
+				icon.Dispose()
+			}
+		}
+	}()
 	blue := walk.RGB(35, 88, 180)
 	muted := walk.RGB(92, 105, 124)
 	white := walk.RGB(255, 255, 255)
@@ -48,6 +60,7 @@ func NewWindow(owner walk.Form, manager *virtualcom.Manager, changed func()) (*w
 		Layout:     VBox{Margins: Margins{Left: 20, Top: 18, Right: 20, Bottom: 14}, Spacing: 12},
 		Children: []Widget{
 			Composite{Layout: HBox{MarginsZero: true, Spacing: 12}, Children: []Widget{
+				ImageView{AssignTo: &p.brand, Image: p.icon("app"), Mode: ImageViewModeIdeal, MinSize: Size{Width: 32, Height: 32}, MaxSize: Size{Width: 32, Height: 32}},
 				Label{Text: "虚拟串口", Font: Font{Family: "Microsoft YaHei UI", PointSize: 19, Bold: true}, TextColor: blue},
 				HSpacer{}, Label{Text: "VirtualCOM " + virtualcom.Version, TextColor: muted},
 			}},
@@ -57,7 +70,7 @@ func NewWindow(owner walk.Form, manager *virtualcom.Manager, changed func()) (*w
 					Label{Text: "端口 A"}, LineEdit{AssignTo: &p.portA, CueBanner: "自动分配", MinSize: Size{Width: 110}, StretchFactor: 1},
 					Label{Text: "⇄", TextColor: blue},
 					Label{Text: "端口 B"}, LineEdit{AssignTo: &p.portB, CueBanner: "自动分配", MinSize: Size{Width: 110}, StretchFactor: 1},
-					PushButton{Text: "创建串口对", MinSize: Size{Width: 110, Height: 30}, OnClicked: p.createPair},
+					PushButton{AssignTo: &p.create, Text: "创建串口对", Image: p.icon("create"), MinSize: Size{Width: 126, Height: 30}, OnClicked: p.createPair},
 				}},
 				Label{Text: "两项留空自动选择空闲编号；手动输入示例：COM10 和 COM11。", TextColor: muted},
 			}},
@@ -73,10 +86,10 @@ func NewWindow(owner walk.Form, manager *virtualcom.Manager, changed func()) (*w
 					{Title: "占用程序", Width: 190}, {Title: "A → B", Width: 95}, {Title: "B → A", Width: 95},
 				}},
 			Composite{Layout: HBox{MarginsZero: true, Spacing: 8}, Children: []Widget{
-				PushButton{AssignTo: &p.toggle, Text: "停用", Enabled: false, MinSize: Size{Width: 80, Height: 30}, OnClicked: p.togglePair},
-				PushButton{AssignTo: &p.remove, Text: "删除", Enabled: false, MinSize: Size{Width: 80, Height: 30}, OnClicked: p.confirmDelete},
-				HSpacer{}, PushButton{Text: "刷新", MinSize: Size{Width: 70, Height: 30}, OnClicked: p.Refresh},
-				PushButton{Text: "诊断", MinSize: Size{Width: 70, Height: 30}, OnClicked: p.showDiagnostics},
+				PushButton{AssignTo: &p.toggle, Text: "停用", Image: p.icon("pause"), Enabled: false, MinSize: Size{Width: 88, Height: 30}, OnClicked: p.togglePair},
+				PushButton{AssignTo: &p.remove, Text: "删除", Image: p.icon("delete"), Enabled: false, MinSize: Size{Width: 88, Height: 30}, OnClicked: p.confirmDelete},
+				HSpacer{}, PushButton{AssignTo: &p.refresh, Text: "刷新", Image: p.icon("refresh"), MinSize: Size{Width: 88, Height: 30}, OnClicked: p.Refresh},
+				PushButton{AssignTo: &p.diagnostics, Text: "诊断", Image: p.icon("diagnostics"), MinSize: Size{Width: 88, Height: 30}, OnClicked: p.showDiagnostics},
 			}},
 			Label{AssignTo: &p.feedback, Text: "暂无串口对，点击“创建串口对”开始。", TextColor: muted, EllipsisMode: EllipsisEnd},
 			Label{Text: "仅支持适配的字节流应用；波特率等参数不生效。退出宿主程序后端口释放。", TextColor: muted},
@@ -90,13 +103,19 @@ func NewWindow(owner walk.Form, manager *virtualcom.Manager, changed func()) (*w
 			return nil, nil, err
 		}
 	}
+	p.applyIcons()
+	p.window.SizeChanged().Attach(p.applyIcons)
 	p.window.Disposing().Attach(func() {
 		if p.closed.CompareAndSwap(false, true) {
 			close(p.done)
+			for _, icon := range p.icons {
+				icon.Dispose()
+			}
 		}
 	})
 	p.Refresh()
 	go p.refreshLoop()
+	created = true
 	return p.window, p, nil
 }
 
@@ -172,10 +191,15 @@ func (p *Page) updateActions() {
 	p.toggle.SetEnabled(selected)
 	p.remove.SetEnabled(selected)
 	label := "停用"
+	iconName := "pause"
 	if selected && !p.model.pairs[i].Enabled {
 		label = "启用"
+		iconName = "play"
 	}
 	p.toggle.SetText(label)
+	if icon := p.icon(iconName); p.toggle.Image() != icon {
+		p.toggle.SetImage(icon)
+	}
 }
 
 func (p *Page) message(text string, failed bool) {

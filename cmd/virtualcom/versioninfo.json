@@ -16,6 +16,7 @@
     "ProductName": "VirtualCOM",
     "ProductVersion": "0.2.2"
   },
+  "IconPath": "../../gui/assets/app.ico",
   "VarFileInfo": {
     "Translation": {"LangID": "0804", "CharsetID": "04B0"}
   }

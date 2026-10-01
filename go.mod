@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	github.com/lxn/walk v0.0.0-20210112085537-c389da54e794
 	github.com/lxn/win v0.0.0-20210218163916-a377121e959e
+	golang.org/x/image v0.45.0
 	golang.org/x/sys v0.48.0
 )
 

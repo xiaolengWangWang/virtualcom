@@ -19,5 +19,6 @@
   "VarFileInfo": {
     "Translation": {"LangID": "0804", "CharsetID": "04B0"}
   },
-  "ManifestPath": "VirtualCOM.exe.manifest"
+  "ManifestPath": "VirtualCOM.exe.manifest",
+  "IconPath": "../../gui/assets/app.ico"
 }

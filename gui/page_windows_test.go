@@ -50,6 +50,11 @@ func TestPageManagesPairsAndPreservesThemOnClose(t *testing.T) {
 			w.Dispose()
 		}
 	}()
+	for _, button := range []*walk.PushButton{page.create, page.toggle, page.remove, page.refresh, page.diagnostics} {
+		if win.SendMessage(button.Handle(), win.BM_GETIMAGE, win.IMAGE_ICON, 0) == 0 {
+			t.Fatalf("native button icon missing at DPI %d: %s", button.DPI(), button.Text())
+		}
+	}
 	if page.toggle.Enabled() || page.remove.Enabled() {
 		t.Fatal("actions enabled without a selection")
 	}
