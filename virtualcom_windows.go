@@ -23,3 +23,7 @@ const (
 
 func NewManager() *Manager                      { return vcom.NewManager() }
 func OpenPort(name string) (*PortClient, error) { return vcom.OpenPort(name) }
+
+// RemoveStaleLinks frees only VirtualCOM aliases whose backing pipe is gone.
+// Call at application startup; live pairs owned by other instances are retained.
+func RemoveStaleLinks() ([]string, error) { return vcom.RemoveStaleLinks() }
