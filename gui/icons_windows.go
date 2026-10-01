@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"sync"
 
 	"github.com/lxn/walk"
 	"github.com/lxn/win"
@@ -18,6 +19,14 @@ import (
 //
 //go:embed assets/*.png
 var iconAssets embed.FS
+
+// Walk retains title-bar icon conversions in a process-wide cache keyed by
+// source image. Share their source for the process lifetime so reopening a
+// window reuses those native resources instead of accumulating new entries.
+var appIcons = struct {
+	sync.Mutex
+	byDPI map[string]*walk.Icon
+}{byDPI: make(map[string]*walk.Icon)}
 
 func (p *Page) icon(name string) *walk.Icon {
 	dpi := 96
@@ -31,7 +40,13 @@ func (p *Page) icon(name string) *walk.Icon {
 		dpi = p.window.DPI()
 	}
 	key := fmt.Sprintf("%s@%d", name, dpi)
-	if icon := p.icons[key]; icon != nil {
+	cache := p.icons
+	if name == "app" {
+		appIcons.Lock()
+		defer appIcons.Unlock()
+		cache = appIcons.byDPI
+	}
+	if icon := cache[key]; icon != nil {
 		return icon
 	}
 	data, err := iconAssets.ReadFile("assets/" + name + ".png")
@@ -55,7 +70,7 @@ func (p *Page) icon(name string) *walk.Icon {
 	if err != nil {
 		return nil
 	}
-	p.icons[key] = icon
+	cache[key] = icon
 	return icon
 }
 

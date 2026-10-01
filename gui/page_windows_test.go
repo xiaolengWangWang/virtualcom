@@ -50,6 +50,10 @@ func TestPageManagesPairsAndPreservesThemOnClose(t *testing.T) {
 			w.Dispose()
 		}
 	}()
+	titleIcon := win.SendMessage(w.Handle(), win.WM_GETICON, 0, 0)
+	if titleIcon == 0 {
+		t.Fatal("missing title-bar icon")
+	}
 	for _, button := range []*walk.PushButton{page.create, page.toggle, page.remove, page.refresh, page.diagnostics} {
 		if win.SendMessage(button.Handle(), win.BM_GETIMAGE, win.IMAGE_ICON, 0) == 0 {
 			t.Fatalf("native button icon missing at DPI %d: %s", button.DPI(), button.Text())
@@ -98,6 +102,14 @@ func TestPageManagesPairsAndPreservesThemOnClose(t *testing.T) {
 		t.Fatalf("port unusable after window closes: %v", err)
 	}
 	client.Close()
+	reopened, _, err := NewWindow(nil, mgr, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Dispose()
+	if got := win.SendMessage(reopened.Handle(), win.WM_GETICON, 0, 0); got != titleIcon {
+		t.Fatal("reopening allocates another process-cached title-bar icon")
+	}
 }
 
 func TestTableShowsDisabledAndBusyPorts(t *testing.T) {
