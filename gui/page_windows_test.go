@@ -54,7 +54,7 @@ func TestPageManagesPairsAndPreservesThemOnClose(t *testing.T) {
 	if titleIcon == 0 {
 		t.Fatal("missing title-bar icon")
 	}
-	for _, button := range []*walk.PushButton{page.create, page.toggle, page.remove, page.refresh, page.diagnostics} {
+	for _, button := range []*walk.PushButton{page.create, page.toggle, page.remove, page.refresh, page.diagnostics, page.copyPorts} {
 		if win.SendMessage(button.Handle(), win.BM_GETIMAGE, win.IMAGE_ICON, 0) == 0 {
 			t.Fatalf("native button icon missing at DPI %d: %s", button.DPI(), button.Text())
 		}

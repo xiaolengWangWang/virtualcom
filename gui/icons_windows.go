@@ -85,5 +85,6 @@ func (p *Page) applyIcons() {
 	p.remove.SetImage(p.icon("delete"))
 	p.refresh.SetImage(p.icon("refresh"))
 	p.diagnostics.SetImage(p.icon("diagnostics"))
+	p.copyPorts.SetImage(p.icon("copy"))
 	p.updateActions()
 }

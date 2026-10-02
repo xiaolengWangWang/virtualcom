@@ -17,20 +17,21 @@ import (
 )
 
 type Page struct {
-	iconDPI                      int
-	brand                        *walk.ImageView
-	create, refresh, diagnostics *walk.PushButton
-	icons                        map[string]*walk.Icon
-	window                       *walk.MainWindow
-	manager                      *virtualcom.Manager
-	model                        *pairModel
-	portA, portB                 *walk.LineEdit
-	table                        *walk.TableView
-	toggle, remove               *walk.PushButton
-	summary, feedback            *walk.Label
-	changed                      func()
-	closed                       atomic.Bool
-	done                         chan struct{}
+	iconDPI                                 int
+	brand                                   *walk.ImageView
+	create, refresh, diagnostics, copyPorts *walk.PushButton
+	icons                                   map[string]*walk.Icon
+	window                                  *walk.MainWindow
+	manager                                 *virtualcom.Manager
+	model                                   *pairModel
+	portA, portB                            *walk.LineEdit
+	table                                   *walk.TableView
+	toggle, remove                          *walk.PushButton
+	summary, feedback                       *walk.Label
+	selection                               *walk.Label
+	changed                                 func()
+	closed                                  atomic.Bool
+	done                                    chan struct{}
 }
 
 // NewWindow creates a management window. The caller owns manager: closing this
@@ -48,13 +49,13 @@ func NewWindow(owner walk.Form, manager *virtualcom.Manager, changed func()) (*w
 			}
 		}
 	}()
-	blue := walk.RGB(35, 88, 180)
+	blue := walk.RGB(23, 60, 101)
 	muted := walk.RGB(92, 105, 124)
 	white := walk.RGB(255, 255, 255)
 	if err := (MainWindow{
 		AssignTo: &p.window,
 		Title:    "VirtualCOM · 虚拟串口管理",
-		Size:     Size{Width: 860, Height: 540}, MinSize: Size{Width: 680, Height: 460},
+		Size:     Size{Width: 860, Height: 560}, MinSize: Size{Width: 680, Height: 480},
 		Font:       Font{Family: "Microsoft YaHei UI", PointSize: 9},
 		Background: SolidColorBrush{Color: walk.RGB(244, 247, 251)},
 		Layout:     VBox{Margins: Margins{Left: 20, Top: 18, Right: 20, Bottom: 14}, Spacing: 12},
@@ -64,15 +65,16 @@ func NewWindow(owner walk.Form, manager *virtualcom.Manager, changed func()) (*w
 				Label{Text: "虚拟串口", Font: Font{Family: "Microsoft YaHei UI", PointSize: 19, Bold: true}, TextColor: blue},
 				HSpacer{}, Label{Text: "VirtualCOM " + virtualcom.Version, TextColor: muted},
 			}},
-			Label{Text: "创建一对端口，让两个应用双向通信。无需安装驱动。", TextColor: muted},
+			Label{Text: "连接两个端口，让应用双向收发数据。", TextColor: muted},
 			Composite{Background: SolidColorBrush{Color: white}, Layout: VBox{Margins: Margins{Left: 14, Top: 12, Right: 14, Bottom: 12}, Spacing: 8}, Children: []Widget{
+				Label{Text: "新建串口对", Font: Font{Family: "Microsoft YaHei UI", PointSize: 10, Bold: true}, TextColor: blue},
 				Composite{Layout: HBox{MarginsZero: true, Spacing: 10}, Children: []Widget{
 					Label{Text: "端口 A"}, LineEdit{AssignTo: &p.portA, CueBanner: "自动分配", MinSize: Size{Width: 110}, StretchFactor: 1},
 					Label{Text: "⇄", TextColor: blue},
 					Label{Text: "端口 B"}, LineEdit{AssignTo: &p.portB, CueBanner: "自动分配", MinSize: Size{Width: 110}, StretchFactor: 1},
 					PushButton{AssignTo: &p.create, Text: "创建串口对", Image: p.icon("create"), MinSize: Size{Width: 126, Height: 30}, OnClicked: p.createPair},
 				}},
-				Label{Text: "两项留空自动选择空闲编号；手动输入示例：COM10 和 COM11。", TextColor: muted},
+				Label{Text: "留空自动分配；也可输入 COM10、COM11 等端口名。", TextColor: muted},
 			}},
 			Composite{Layout: HBox{MarginsZero: true}, Children: []Widget{
 				Label{Text: "串口对", Font: Font{Family: "Microsoft YaHei UI", PointSize: 10, Bold: true}}, HSpacer{},
@@ -88,11 +90,13 @@ func NewWindow(owner walk.Form, manager *virtualcom.Manager, changed func()) (*w
 			Composite{Layout: HBox{MarginsZero: true, Spacing: 8}, Children: []Widget{
 				PushButton{AssignTo: &p.toggle, Text: "停用", Image: p.icon("pause"), Enabled: false, MinSize: Size{Width: 88, Height: 30}, OnClicked: p.togglePair},
 				PushButton{AssignTo: &p.remove, Text: "删除", Image: p.icon("delete"), Enabled: false, MinSize: Size{Width: 88, Height: 30}, OnClicked: p.confirmDelete},
+				PushButton{AssignTo: &p.copyPorts, Text: "复制端口", Image: p.icon("copy"), Enabled: false, MinSize: Size{Width: 100, Height: 30}, OnClicked: p.copySelectedPorts},
 				HSpacer{}, PushButton{AssignTo: &p.refresh, Text: "刷新", Image: p.icon("refresh"), MinSize: Size{Width: 88, Height: 30}, OnClicked: p.Refresh},
 				PushButton{AssignTo: &p.diagnostics, Text: "诊断", Image: p.icon("diagnostics"), MinSize: Size{Width: 88, Height: 30}, OnClicked: p.showDiagnostics},
 			}},
+			Label{AssignTo: &p.selection, Text: "选择串口对后，可启停、复制端口名或删除。", TextColor: muted, EllipsisMode: EllipsisEnd},
 			Label{AssignTo: &p.feedback, Text: "暂无串口对，点击“创建串口对”开始。", TextColor: muted, EllipsisMode: EllipsisEnd},
-			Label{Text: "仅支持适配的字节流应用；波特率等参数不生效。退出宿主程序后端口释放。", TextColor: muted},
+			Label{Text: "兼容已适配的应用（如 CommBox）；波特率等串口参数不生效。\r\n关闭管理页不影响通信；退出创建端口的程序后，端口释放。", TextColor: muted},
 		},
 	}).Create(); err != nil {
 		return nil, nil, err
@@ -190,6 +194,17 @@ func (p *Page) updateActions() {
 	selected := i >= 0 && i < len(p.model.pairs)
 	p.toggle.SetEnabled(selected)
 	p.remove.SetEnabled(selected)
+	if p.copyPorts != nil {
+		p.copyPorts.SetEnabled(selected)
+	}
+	if p.selection != nil {
+		text := "选择串口对后，可启停、复制端口名或删除。"
+		if selected {
+			pair := p.model.pairs[i]
+			text = fmt.Sprintf("已选择  %s  ⇄  %s", pair.A.Name, pair.B.Name)
+		}
+		p.selection.SetText(text)
+	}
 	label := "停用"
 	iconName := "pause"
 	if selected && !p.model.pairs[i].Enabled {
@@ -200,6 +215,18 @@ func (p *Page) updateActions() {
 	if icon := p.icon(iconName); p.toggle.Image() != icon {
 		p.toggle.SetImage(icon)
 	}
+}
+
+func (p *Page) copySelectedPorts() {
+	if p.selectedID() == "" {
+		return
+	}
+	pair := p.model.pairs[p.table.CurrentIndex()]
+	if err := walk.Clipboard().SetText(pair.A.Name + "\r\n" + pair.B.Name); err != nil {
+		p.message("复制失败："+err.Error(), true)
+		return
+	}
+	p.message("已复制两个端口名，每行一个。", false)
 }
 
 func (p *Page) message(text string, failed bool) {
